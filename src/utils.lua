@@ -29,6 +29,24 @@ function utils.save_file(content, path)
   return file:close()
 end
 
+---Save (append) the content to the file
+---@param content string content of the file
+---@param path string path to the file
+---@return boolean? result
+function utils.append_file(content, path)
+  local file = io.open(path, 'a')
+
+  if file == nil then
+    assert(file, 'Can\'t save a file at path: "' .. path .. '"')
+    return false
+  end
+
+  assert(file:write(content), 'Error during writing to the file "' .. path .. '"')
+  print('The file "' .. path .. '" has been successfully created')
+
+  return file:close()
+end
+
 ---Read the content from the file
 ---@param path string path to the file
 ---@return string content content of the file

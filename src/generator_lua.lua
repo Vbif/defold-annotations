@@ -445,16 +445,13 @@ end
 ---@param modules module[]
 ---@param defold_version string like '1.0.0'
 function generator.generate_api(modules, defold_version)
-  print('-- Annotations Generation')
-
-  terminal.delete_folder(config.api_folder)
-  terminal.create_folder(config.api_folder)
+  print('-- Lua Annotations Generation')
 
   for _, module in ipairs(modules) do
     generate_api(module, defold_version)
   end
 
-  print('-- Annotations Generated Successfully!\n')
+  print('-- Lua Annotations Generated Successfully!\n')
 end
 
 return generator

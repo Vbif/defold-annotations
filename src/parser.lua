@@ -39,11 +39,9 @@ end
 
 ---Parse documentation files and create module objects
 ---@param json_paths string[] json_paths an array of paths to json files
----@return module[] modules Parsed documentation objects
-function parser.parse_json(json_paths)
+---@param modules module[] modules Parsed documentation objects
+function parser.parse_json(json_paths, modules)
   print('-- Modules Parsing')
-
-  local modules = {}
 
   for _, json_path in ipairs(json_paths) do
     local module = parse_path(json_path)
