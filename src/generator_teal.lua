@@ -30,6 +30,63 @@ local function decode_text(text)
   return result
 end
 
+---Change . to _ in class names
+---@param name string
+---@return string
+local function corect_name(name)
+  local res, _ = string.gsub(name, '%.', '_')
+  return res
+end
+
+---Convert Lua annotation type to Teal
+---@param type string
+---@return string
+local function convert_type_single(type)
+  local list = {}
+  while true do
+    local last_two = string.sub(type, -2)
+    if last_two == "[]" then
+      table.insert(list, "array")
+      type = string.sub(type, 1, -3)
+    else
+      break
+    end
+  end
+  type = corect_name(type)
+  for index, value in ipairs(list) do
+    if value == "array" then
+      type = string.format("{%s}", type)
+    end
+  end
+  return type
+end
+
+---Convert Lua annotation type to Teal
+---@param type string
+---@return string
+local function convert_type(type)
+  type = string.gsub(type, "%s+", "")
+  local types = {}
+  for value in string.gmatch(type, "([^|]+)") do
+    local conv = convert_type_single(value)
+    table.insert(types, conv)
+  end
+  return table.concat(types, "|")
+end
+
+---Split string with type and comment to separate strings
+---@param text string
+---@return string type
+---@return string comment
+local function split_type_comment(text)
+  local index = string.find(text, " ")
+  if index then
+    return string.sub(text, 1, index), string.sub(text, index)
+  else
+    return text, ""
+  end
+end
+
 ---Make an annotable comment
 ---@param text string
 ---@param tab? string Indent string, default is '---'
@@ -67,11 +124,10 @@ local function make_global_header(defold_version)
 end
 
 ---Make an annotable module header
----@param defold_version string
 ---@param title string
 ---@param description string
 ---@return string
-local function make_module_header(defold_version, title, description)
+local function make_module_header(title, description)
   local result = ''
 
   result = result .. '--[[\n'
@@ -83,25 +139,6 @@ local function make_module_header(defold_version, title, description)
   end
 
   result = result .. '--]]'
-
-  return result
-end
-
----Make annotable diagnostic disable flags
----@param disabled_diagnostics string[] list of diagnostic disabel flags
----@return string
-local function make_disabled_diagnostics(disabled_diagnostics)
-  local result = ''
-
-  result = result .. '---@meta\n'
-
-  for index, disabled_diagnostic in ipairs(disabled_diagnostics) do
-    result = result .. '---@diagnostic disable: ' .. disabled_diagnostic
-
-    if index < #config.disabled_diagnostics then
-      result = result .. '\n'
-    end
-  end
 
   return result
 end
@@ -326,67 +363,76 @@ end
 ---@param element element
 ---@return string
 local function make_alias(element)
-  return '---@alias ' .. element.name .. ' ' .. element.alias
+  if element.alias == "userdata" then
+    return string.format("global record %s is userdata end", element.name)
+  end
+  return string.format("global type %s = %s", element.name, element.alias)
 end
 
 ---Make an annnotable class declaration
 ---@param element element
 ---@return string
 local function make_class(element)
-  local name = element.name
+  local name = corect_name(element.name)
   local fields = element.fields
   assert(fields)
 
-  local result = ''
-  result = result .. '---@class ' .. name .. '\n'
-
   if fields.is_global == true then
-    fields.is_global = nil
-    result = result .. name .. ' = {}'
+    return ''
   end
+
+  local result = ''
+  result = result .. string.format('global record %s \n', name)
+
+  -- if fields.is_global == true then
+  --   fields.is_global = nil
+  --   result = result .. name .. ' = {}'
+  -- end
 
   local field_names = utils.sorted_keys(fields)
-  for index, field_name in ipairs(field_names) do
+  for _, field_name in ipairs(field_names) do
     local type = fields[field_name]
-
-    result = result .. '---@field ' .. field_name .. ' ' .. type
-
-    if index < #field_names then
-      result = result .. '\n'
+    local comment = ""
+    type, comment = split_type_comment(type)
+    type = convert_type(type)
+    if comment ~= "" then
+      result = result .. make_comment(comment, "\t--") .. '\n'
     end
+    result = result .. string.format('\t%s: %s\n', field_name, type)
   end
 
-  local operators = element.operators
+  result = result .. 'end'
 
-  if operators then
-    local operator_names = utils.sorted_keys(operators)
+  -- local operators = element.operators
 
-    result = result .. '\n'
+  -- if operators then
+  --   local operator_names = utils.sorted_keys(operators)
 
-    for index, operator_name in ipairs(operator_names) do
-      local operator = operators[operator_name]
+  --   result = result .. '\n'
 
-      if operator.param then
-        result = result .. '---@operator ' .. operator_name .. '(' .. operator.param .. '): ' .. operator.result
-      else
-        result = result .. '---@operator ' .. operator_name .. ': ' .. operator.result
-      end
+  --   for index, operator_name in ipairs(operator_names) do
+  --     local operator = operators[operator_name]
 
-      if index < #operator_names then
-        result = result .. '\n'
-      end
-    end
-  end
+  --     if operator.param then
+  --       result = result .. '---@operator ' .. operator_name .. '(' .. operator.param .. '): ' .. operator.result
+  --     else
+  --       result = result .. '---@operator ' .. operator_name .. ': ' .. operator.result
+  --     end
+
+  --     if index < #operator_names then
+  --       result = result .. '\n'
+  --     end
+  --   end
+  -- end
 
   return result
 end
 
 ---Generate API module
 ---@param module module
----@param defold_version string like '1.0.0'
 ---@return string
-local function generate_api(module, defold_version)
-  local content = make_module_header(defold_version, module.info.brief, module.info.description)
+local function generate_api(module)
+  local content = make_module_header(module.info.brief, module.info.description)
   content = content .. '\n\n'
 
   local makers = {
@@ -397,17 +443,17 @@ local function generate_api(module, defold_version)
   }
 
   local elements = {}
-  local namespace_is_required = false
+  -- local namespace_is_required = false
 
   for _, element in ipairs(module.elements) do
     if makers[element.type] ~= nil then
       table.insert(elements, element)
     end
 
-    if not namespace_is_required then
-      local element_has_namespace = element.name:sub(1, #module.info.namespace) == module.info.namespace
-      namespace_is_required = element_has_namespace
-    end
+    -- if not namespace_is_required then
+    --   local element_has_namespace = element.name:sub(1, #module.info.namespace) == module.info.namespace
+    --   namespace_is_required = element_has_namespace
+    -- end
   end
 
   if #elements == 0 then
@@ -419,7 +465,7 @@ local function generate_api(module, defold_version)
     if a.type == b.type then
       return a.name < b.name
     else
-      return a.type > b.type
+      return a.type < b.type
     end
   end)
 
@@ -432,22 +478,69 @@ local function generate_api(module, defold_version)
     if text then
       body = body .. text
 
-      if index < #elements then
-        local newline = element.type == 'BASIC_ALIAS' and '\n' or '\n\n'
-        body = body .. newline
-      end
+      -- if index < #elements then
+      --   local newline = element.type == 'BASIC_ALIAS' and '\n' or '\n\n'
+      --   body = body .. newline
+      -- end
+      body = body .. '\n\n'
     end
   end
 
-  content = content .. make_disabled_diagnostics(config.disabled_diagnostics) .. '\n\n'
-
-  if namespace_is_required then
-    content = content .. make_namespace(module.info.namespace, body)
-  else
-    content = content .. body
-  end
+  -- if namespace_is_required then
+  --   content = content .. make_namespace(module.info.namespace, body)
+  -- else
+  --   content = content .. body
+  -- end
+  content = content .. body
 
   return content
+end
+
+---Removes elements with match callback
+---@param module module
+---@param match function(element):boolean
+local function remove_elements(module, match)
+  local new_elements = {}
+  for i, v in ipairs(module.elements) do
+    if not match(v) then
+      table.insert(new_elements, v)
+    end
+  end
+  module.elements = new_elements
+end
+
+---Change something in module for teal. Trying to put everything ugly here
+---@param module module
+local function patch(module)
+
+  local allowed = {
+    meta = true,
+  }
+
+  if not allowed[module.info.namespace] then
+    module.elements = {}
+    return
+  end
+
+  -- skip all editor stuff for now
+  remove_elements(module, function (v)
+    return string.sub(v.name, 1, 6) == 'editor'
+  end)
+
+  if module.info.namespace == "meta" then
+    -- delete some strange stuff
+    local toremove = {
+      array = true,
+      bool = true,
+      float = true,
+      render_target = true,
+      quaternion = true,
+      resource_handle = true,
+    }
+    remove_elements(module, function (v)
+      return toremove[v.name]
+    end)
+  end
 end
 
 --
@@ -463,10 +556,11 @@ function generator.generate_api(modules, defold_version)
   local header = make_global_header(defold_version)
   utils.append_file(header, api_path)
 
-  -- for _, module in ipairs(modules) do
-  --   local content = generate_api(module, defold_version)
-  --   utils.append_file(content, api_path)
-  -- end
+  for _, module in ipairs(modules) do
+    patch(module)
+    local content = generate_api(module)
+    utils.append_file(content, api_path)
+  end
 
   print('-- Teal Annotations Generated Successfully!\n')
 end
