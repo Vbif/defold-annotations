@@ -10,6 +10,7 @@ local html_entities = require 'libs.html_entities'
 local config = require 'src.config'
 local utils = require 'src.utils'
 local terminal = require 'src.terminal'
+local internal = require 'src.teal.internal'
 
 local generator = {}
 
@@ -30,14 +31,6 @@ local function decode_text(text)
   return result
 end
 
----Change . to _ in class names
----@param name string
----@return string
-local function corect_name(name)
-  local res, _ = string.gsub(name, '%.', '_')
-  return res
-end
-
 ---Convert Lua annotation type to Teal
 ---@param type string
 ---@return string
@@ -52,7 +45,6 @@ local function convert_type_single(type)
       break
     end
   end
-  type = corect_name(type)
   for index, value in ipairs(list) do
     if value == "array" then
       type = string.format("{%s}", type)
@@ -111,14 +103,15 @@ end
 
 ---Make an annotable global header
 ---@param defold_version string
----@return string
+---@return string[]
 local function make_global_header(defold_version)
-  local result = ''
+  local result = {}
 
-  result = result .. '--[[\n'
-  result = result .. '  Generated with ' .. config.generator_url .. '\n'
-  result = result .. '  Defold ' .. defold_version .. '\n'
-  result = result .. '--]]\n\n'
+  result[1] = string.format('--[[')
+  result[2] = string.format('  Generated with %s', config.generator_url)
+  result[3] = string.format('  Defold %s', defold_version)
+  result[4] = string.format('--]]')
+  result[5] = ''
 
   return result
 end
@@ -139,21 +132,6 @@ local function make_module_header(title, description)
   end
 
   result = result .. '--]]'
-
-  return result
-end
-
----Wrap the class body to an annotable namespace
----@param name string
----@param body string
----@return string
-local function make_namespace(name, body)
-  local result = ''
-
-  result = result .. '---@class defold_api.' .. name .. '\n'
-  result = result .. name .. ' = {}\n\n'
-  result = result .. body .. '\n\n'
-  result = result .. 'return ' .. name
 
   return result
 end
@@ -361,33 +339,27 @@ end
 
 ---Make an annotable alias
 ---@param element element
----@return string
+---@return content_line
 local function make_alias(element)
+  local content
   if element.alias == "userdata" then
-    return string.format("global record %s is userdata end", element.name)
+    content = string.format("global record %s is userdata end", element.name)
+  else
+    content = string.format("global type %s = %s", element.name, element.alias)
   end
-  return string.format("global type %s = %s", element.name, element.alias)
+  return content
 end
 
 ---Make an annnotable class declaration
 ---@param element element
----@return string
+---@return content_line
 local function make_class(element)
-  local name = corect_name(element.name)
+  local name = element.name
   local fields = element.fields
   assert(fields)
 
-  if fields.is_global == true then
-    return ''
-  end
-
-  local result = ''
-  result = result .. string.format('global record %s \n', name)
-
-  -- if fields.is_global == true then
-  --   fields.is_global = nil
-  --   result = result .. name .. ' = {}'
-  -- end
+  local content_fields = {}
+  local index = 1
 
   local field_names = utils.sorted_keys(fields)
   for _, field_name in ipairs(field_names) do
@@ -396,12 +368,12 @@ local function make_class(element)
     type, comment = split_type_comment(type)
     type = convert_type(type)
     if comment ~= "" then
-      result = result .. make_comment(comment, "\t--") .. '\n'
+      content_fields[index] = make_comment(comment, "--")
+      index = index + 1
     end
-    result = result .. string.format('\t%s: %s\n', field_name, type)
+    content_fields[index] = string.format('%s: %s', field_name, type)
+    index = index + 1
   end
-
-  result = result .. 'end'
 
   -- local operators = element.operators
 
@@ -425,42 +397,28 @@ local function make_class(element)
   --   end
   -- end
 
-  return result
+  local content = {
+    '',
+    string.format('record %s', name),
+    content_fields,
+    'end',
+  }
+  return content
 end
 
 ---Generate API module
----@param module module
----@return string
-local function generate_api(module)
-  local content = make_module_header(module.info.brief, module.info.description)
-  content = content .. '\n\n'
+---@param group element_group
+---@return content
+local function generate_api(group)
 
   local makers = {
-    FUNCTION = make_func,
-    VARIABLE = make_const,
+    -- FUNCTION = make_func,
+    -- VARIABLE = make_const,
     BASIC_CLASS = make_class,
     BASIC_ALIAS = make_alias
   }
 
-  local elements = {}
-  -- local namespace_is_required = false
-
-  for _, element in ipairs(module.elements) do
-    if makers[element.type] ~= nil then
-      table.insert(elements, element)
-    end
-
-    -- if not namespace_is_required then
-    --   local element_has_namespace = element.name:sub(1, #module.info.namespace) == module.info.namespace
-    --   namespace_is_required = element_has_namespace
-    -- end
-  end
-
-  if #elements == 0 then
-    print('[-] The module "' .. module.info.namespace .. '" is skipped because there are no known elements')
-    return ""
-  end
-
+  local elements = group.elements
   table.sort(elements, function(a, b)
     if a.type == b.type then
       return a.name < b.name
@@ -469,31 +427,59 @@ local function generate_api(module)
     end
   end)
 
-  local body = ''
+  local content = {}
 
-  for index, element in ipairs(elements) do
+  for _, element in ipairs(elements) do
     local maker = makers[element.type]
-    local text = maker(element)
-
-    if text then
-      body = body .. text
-
-      -- if index < #elements then
-      --   local newline = element.type == 'BASIC_ALIAS' and '\n' or '\n\n'
-      --   body = body .. newline
-      -- end
-      body = body .. '\n\n'
+    if maker then
+      local sub_content = maker(element)
+      internal.content_append(content, sub_content)
     end
   end
 
-  -- if namespace_is_required then
-  --   content = content .. make_namespace(module.info.namespace, body)
-  -- else
-  --   content = content .. body
-  -- end
-  content = content .. body
+  for _, subgroup in pairs(group.groups) do
+    local sub_content = {
+      '',
+      string.format('record %s', subgroup.name),
+      generate_api(subgroup),
+      'end',
+    }
+    internal.content_append(content, sub_content)
+  end
 
   return content
+end
+
+---Put element in proper group
+---@param group element_group
+---@param element element
+local function sift_element(group, element)
+  --Dissect name of element
+  local name_group
+  local name_element = element.name
+  local index = string.find(name_element, "%.")
+  if index then
+    name_group = string.sub(name_element, 1, index - 1)
+    name_element = string.sub(name_element, index + 1)
+  end
+
+  --put recursivly in proper subgroup or inside this
+  if name_group then
+    local sub = group.groups[name_group]
+    if not sub then
+      sub = {
+        name = name_group,
+        elements = {},
+        groups = {}
+      }
+      group.groups[name_group] = sub
+    end
+
+    element.name = name_element
+    sift_element(sub, element)
+  else
+    table.insert(group.elements, element)
+  end
 end
 
 ---Removes elements with match callback
@@ -511,12 +497,13 @@ end
 
 ---Change something in module for teal. Trying to put everything ugly here
 ---@param module module
-local function patch(module)
+local function patch_module(module)
 
+  -- filter for developing purpose
   local allowed = {
     meta = true,
+    --go = true,
   }
-
   if not allowed[module.info.namespace] then
     module.elements = {}
     return
@@ -525,6 +512,11 @@ local function patch(module)
   -- skip all editor stuff for now
   remove_elements(module, function (v)
     return string.sub(v.name, 1, 6) == 'editor'
+  end)
+
+  -- remove empty defenitions
+  remove_elements(module, function (v)
+    return v.fields and v.fields.is_global == true
   end)
 
   if module.info.namespace == "meta" then
@@ -541,6 +533,23 @@ local function patch(module)
       return toremove[v.name]
     end)
   end
+
+end
+
+---Make all types global in definition
+---@param content content
+---@return content
+local function globalize(content)
+  for index, line in ipairs(content) do
+    if type(line) == "string" then
+      local sub_record = string.sub(line, 1, 6)
+      local sub_type = string.sub(line, 1, 4)
+      if sub_record == "record" or sub_type == "type" then
+        content[index] = "global " .. line
+      end
+    end
+  end
+  return content
 end
 
 --
@@ -552,15 +561,29 @@ end
 function generator.generate_api(modules, defold_version)
   print('-- Teal Annotations Generation')
 
-  local api_path = config.api_folder .. config.folder_separator .. 'defold.d.tl'
-  local header = make_global_header(defold_version)
-  utils.append_file(header, api_path)
-
+  -- rearrange everything to groups
+  local root_group = {
+    name = "",
+    elements = {},
+    groups = {}
+  }
   for _, module in ipairs(modules) do
-    patch(module)
-    local content = generate_api(module)
-    utils.append_file(content, api_path)
+    patch_module(module)
+    for _, element in ipairs(module.elements) do
+      sift_element(root_group, element)
+    end
   end
+
+  -- generate recursivly, add global, flattern
+  local content = {
+    make_global_header(defold_version),
+    globalize(generate_api(root_group)),
+  }
+  local strings = internal.content_stringify(content)
+
+  -- write file
+  local api_path = config.api_folder .. config.folder_separator .. 'defold.d.tl'
+  utils.save_file_lines(strings, api_path)
 
   print('-- Teal Annotations Generated Successfully!\n')
 end

@@ -10,7 +10,7 @@ local fetcher = require 'src.fetcher'
 local parser = require 'src.parser'
 local meta = require 'src.meta'
 local generator_lua = require 'src.generator_lua'
-local generator_teal = require 'src.generator_teal'
+local generator_teal = require 'src.teal.generator'
 local terminal = require 'src.terminal'
 local config = require 'src.config'
 

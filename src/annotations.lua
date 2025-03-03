@@ -31,4 +31,11 @@
 ---@field name string
 ---@field doc string
 
+---@class element_group
+---@field name string
+---@field elements element[]
+---@field groups table<string, element_group>
+
+---@alias content_line string|string[]
+---@alias content content_line[]
 ---@alias returnvalue parameter
