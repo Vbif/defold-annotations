@@ -6,6 +6,8 @@
   MIT license. See LICENSE for details.
 --]]
 
+local utils = require 'src.utils'
+
 ---@class generator_teal_internal
 local internal = {}
 
@@ -57,6 +59,16 @@ function internal.content_stringify(content)
   local result = {}
   content_stringify_internal(result, 0, content)
   return result
+end
+
+---Iterate over table in stable order
+---@param t table
+---@param callback function(string, table)
+function internal.foreach_stable(t, callback)
+  local keys = utils.sorted_keys(t)
+  for _, key in ipairs(keys) do
+    callback(key, t[key])
+  end
 end
 
 return internal

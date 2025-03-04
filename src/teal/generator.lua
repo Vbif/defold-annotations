@@ -362,27 +362,25 @@ local function make_class(element)
   local content_fields = {}
   local index = 1
 
-  local field_names = utils.sorted_keys(fields)
-  for _, field_name in ipairs(field_names) do
-    local type = fields[field_name]
-    local comment = ""
-    type, comment = split_type_comment(type)
-    type = convert_type(type)
-    if comment ~= "" then
-      content_fields[index] = make_comment(comment, "--")
+  if fields then
+    internal.foreach_stable(fields, function(field_name, type)
+      local comment = ""
+      type, comment = split_type_comment(type)
+      type = convert_type(type)
+      if comment ~= "" then
+        content_fields[index] = make_comment(comment, "--")
+        index = index + 1
+      end
+      content_fields[index] = string.format('%s: %s', field_name, type)
       index = index + 1
-    end
-    content_fields[index] = string.format('%s: %s', field_name, type)
-    index = index + 1
+    end)
   end
 
   local content_operators = {}
   index = 1
 
   if operators then
-    local operator_names = utils.sorted_keys(operators)
-    for _, operator_name in ipairs(operator_names) do
-      local operator = operators[operator_name]
+    internal.foreach_stable(operators, function(operator_name, operator)
       local params = {}
       if operator.param then
         table.insert(params, operator.param)
@@ -390,7 +388,7 @@ local function make_class(element)
       local func_params = table.concat(params, ", ")
       content_operators[index] = string.format("%s: function(%s): %s", operator_name, func_params, operator.result)
       index = index + 1
-    end
+    end)
   end
 
   local content = {
@@ -434,7 +432,7 @@ local function generate_api(group)
     end
   end
 
-  for _, subgroup in pairs(group.groups) do
+    internal.foreach_stable(group.groups, function(subgroup_name, subgroup)
     local sub_content = {
       '',
       string.format('record %s', subgroup.name),
@@ -442,7 +440,7 @@ local function generate_api(group)
       'end',
     }
     internal.content_append(content, sub_content)
-  end
+  end)
 
   return content
 end
