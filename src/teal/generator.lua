@@ -393,7 +393,7 @@ local function make_class(element)
 
   local content = {
     '',
-    string.format('record %s', name),
+    string.format('record %s is userdata', name),
     content_fields,
     content_operators,
     'end',
@@ -413,12 +413,20 @@ local function generate_api(group)
     BASIC_ALIAS = make_alias
   }
 
+  local type_order = {
+    FUNCTION = 4,
+    VARIABLE = 3,
+    BASIC_CLASS = 1,
+    BASIC_ALIAS = 2,
+    PROPERTY = 0,
+    MESSAGE = 0,
+  }
   local elements = group.elements
   table.sort(elements, function(a, b)
     if a.type == b.type then
       return a.name < b.name
     else
-      return a.type < b.type
+      return type_order[a.type] < type_order[b.type]
     end
   end)
 
@@ -432,7 +440,7 @@ local function generate_api(group)
     end
   end
 
-    internal.foreach_stable(group.groups, function(subgroup_name, subgroup)
+  internal.foreach_stable(group.groups, function(subgroup_name, subgroup)
     local sub_content = {
       '',
       string.format('record %s', subgroup.name),
@@ -521,7 +529,6 @@ local function patch_module(module)
       bool = true,
       float = true,
       render_target = true,
-      quaternion = true,
       resource_handle = true,
     }
     remove_elements(module, function (v)
