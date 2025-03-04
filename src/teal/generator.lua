@@ -356,6 +356,7 @@ end
 local function make_class(element)
   local name = element.name
   local fields = element.fields
+  local operators = element.operators
   assert(fields)
 
   local content_fields = {}
@@ -375,32 +376,28 @@ local function make_class(element)
     index = index + 1
   end
 
-  -- local operators = element.operators
+  local content_operators = {}
+  index = 1
 
-  -- if operators then
-  --   local operator_names = utils.sorted_keys(operators)
-
-  --   result = result .. '\n'
-
-  --   for index, operator_name in ipairs(operator_names) do
-  --     local operator = operators[operator_name]
-
-  --     if operator.param then
-  --       result = result .. '---@operator ' .. operator_name .. '(' .. operator.param .. '): ' .. operator.result
-  --     else
-  --       result = result .. '---@operator ' .. operator_name .. ': ' .. operator.result
-  --     end
-
-  --     if index < #operator_names then
-  --       result = result .. '\n'
-  --     end
-  --   end
-  -- end
+  if operators then
+    local operator_names = utils.sorted_keys(operators)
+    for _, operator_name in ipairs(operator_names) do
+      local operator = operators[operator_name]
+      local params = {}
+      if operator.param then
+        table.insert(params, operator.param)
+      end
+      local func_params = table.concat(params, ", ")
+      content_operators[index] = string.format("%s: function(%s): %s", operator_name, func_params, operator.result)
+      index = index + 1
+    end
+  end
 
   local content = {
     '',
     string.format('record %s', name),
     content_fields,
+    content_operators,
     'end',
   }
   return content
