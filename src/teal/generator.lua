@@ -82,21 +82,20 @@ end
 ---Make an annotable comment
 ---@param text string
 ---@param tab? string Indent string, default is '---'
----@return string
+---@return string[]
 local function make_comment(text, tab)
   local tab = tab or '---'
   local text = decode_text(text or '')
 
   local lines = text == '' and { text } or utils.get_lines(text)
-  local result = ''
+  local result = {}
 
   for index, line in ipairs(lines) do
-    result = result .. tab .. line
-
-    if index < #lines then
-      result = result .. '\n'
-    end
+    result[index] = tab .. "    " .. line
+    index = index + 1
   end
+
+  result[1] = tab .. lines[1]
 
   return result
 end
@@ -116,26 +115,6 @@ local function make_global_header(defold_version)
   return result
 end
 
----Make an annotable module header
----@param title string
----@param description string
----@return string
-local function make_module_header(title, description)
-  local result = ''
-
-  result = result .. '--[[\n'
-  result = result .. '  ' .. decode_text(title) .. '\n'
-
-  if description and description ~= title then
-    result = result .. '\n'
-    result = result .. make_comment(description, '  ') .. '\n'
-  end
-
-  result = result .. '--]]'
-
-  return result
-end
-
 ---Make an annotatable constant
 ---@param element element
 ---@return string
@@ -148,193 +127,181 @@ local function make_const(element)
   return result
 end
 
----Make an annotatable param name
----@param parameter table
----@param is_return boolean
----@param element element
----@return string name
----@return boolean is_optional
-local function make_param_name(parameter, is_return, element)
-  local name = parameter.name
-  local is_optional = false
+-- ---Make an annotatable param name
+-- ---@param parameter table
+-- ---@param is_return boolean
+-- ---@param element element
+-- ---@return string name
+-- ---@return boolean is_optional
+-- local function make_param_name(parameter, is_return, element)
+--   local name = parameter.name
+--   local is_optional = false
 
-  if name:sub(1, 1) == '[' and name:sub(-1) == ']' then
-    is_optional = true
-    name = name:sub(2, #name - 1)
-  end
+--   if name:sub(1, 1) == '[' and name:sub(-1) == ']' then
+--     is_optional = true
+--     name = name:sub(2, #name - 1)
+--   end
 
-  name = config.global_name_replacements[name] or name
+--   name = config.global_name_replacements[name] or name
 
-  local local_replacements = config.local_name_replacements[element.name] or {}
-  name = local_replacements[(is_return and 'return_' or 'param_') .. name] or name
+--   local local_replacements = config.local_name_replacements[element.name] or {}
+--   name = local_replacements[(is_return and 'return_' or 'param_') .. name] or name
 
-  if name:sub(-3) == '...' then
-    name = '...'
-  end
+--   if name:sub(-3) == '...' then
+--     name = '...'
+--   end
 
-  name = name:gsub('-', '_')
+--   name = name:gsub('-', '_')
 
-  return name, is_optional
-end
+--   return name, is_optional
+-- end
 
----Make annotatable param types
----@param name string
----@param types table
----@param is_optional boolean
----@param is_return boolean
----@param element element
----@return string concated_string
-local function make_param_types(name, types, is_optional, is_return, element)
-  local local_replacements = config.local_type_replacements[element.name] or {}
+-- ---Make annotatable param types
+-- ---@param name string
+-- ---@param types table
+-- ---@param is_optional boolean
+-- ---@param is_return boolean
+-- ---@param element element
+-- ---@return string concated_string
+-- local function make_param_types(name, types, is_optional, is_return, element)
+--   local local_replacements = config.local_type_replacements[element.name] or {}
 
-  for index = 1, #types do
-    local type = types[index]
-    local is_known = false
+--   for index = 1, #types do
+--     local type = types[index]
+--     local is_known = false
 
-    local replacement = config.global_type_replacements[type] or type
-    replacement = local_replacements[(is_return and 'return_' or 'param_') .. type .. '_' .. name] or replacement
+--     local replacement = config.global_type_replacements[type] or type
+--     replacement = local_replacements[(is_return and 'return_' or 'param_') .. type .. '_' .. name] or replacement
 
-    if replacement then
-      type = replacement
-      is_known = true
-    end
+--     if replacement then
+--       type = replacement
+--       is_known = true
+--     end
 
-    for _, known_type in ipairs(config.known_types) do
-      is_known = is_known or type == known_type
-    end
+--     for _, known_type in ipairs(config.known_types) do
+--       is_known = is_known or type == known_type
+--     end
 
-    local known_classes = utils.sorted_keys(config.known_classes)
-    for _, known_class in ipairs(known_classes) do
-      is_known = is_known or type == known_class
-    end
+--     local known_classes = utils.sorted_keys(config.known_classes)
+--     for _, known_class in ipairs(known_classes) do
+--       is_known = is_known or type == known_class
+--     end
 
-    local known_aliases = utils.sorted_keys(config.known_aliases)
-    for _, known_alias in ipairs(known_aliases) do
-      is_known = is_known or type == known_alias
-    end
+--     local known_aliases = utils.sorted_keys(config.known_aliases)
+--     for _, known_alias in ipairs(known_aliases) do
+--       is_known = is_known or type == known_alias
+--     end
 
-    is_known = is_known or type:sub(1, 9) == 'function('
+--     is_known = is_known or type:sub(1, 9) == 'function('
 
-    if not is_known then
-      types[index] = config.unknown_type
-    else
-      type = type:gsub('function%(%)', 'function')
+--     if not is_known then
+--       types[index] = config.unknown_type
+--     else
+--       type = type:gsub('function%(%)', 'function')
 
-      if type:sub(1, 9) == 'function(' then
-        type = 'fun' .. type:sub(9)
-      end
+--       if type:sub(1, 9) == 'function(' then
+--         type = 'fun' .. type:sub(9)
+--       end
 
-      types[index] = type
-    end
-  end
+--       types[index] = type
+--     end
+--   end
 
-  if is_optional then
-    local is_already_optional = false
+--   if is_optional then
+--     local is_already_optional = false
 
-    for _, type in ipairs(types) do
-      is_already_optional = is_already_optional or type == 'nil'
-    end
+--     for _, type in ipairs(types) do
+--       is_already_optional = is_already_optional or type == 'nil'
+--     end
 
-    if not is_already_optional then
-      table.insert(types, 'nil')
-    end
-  end
+--     if not is_already_optional then
+--       table.insert(types, 'nil')
+--     end
+--   end
 
-  local result = table.concat(types, '|')
-  result = #result > 0 and result or config.unknown_type
+--   local result = table.concat(types, '|')
+--   result = #result > 0 and result or config.unknown_type
 
-  return result
-end
+--   return result
+-- end
 
----Make an annotable param description
----@param description string
----@return string
-local function make_param_description(description)
-  local result = decode_text(description)
-  result = result:gsub('\n', '\n---')
-  return result
-end
+-- ---Make an annotable param description
+-- ---@param description string
+-- ---@return string
+-- local function make_param_description(description)
+--   local result = decode_text(description)
+--   result = result:gsub('\n', '\n---')
+--   return result
+-- end
 
----Make annotable param line
----@param parameter table
----@param element element
----@return string
-local function make_param(parameter, element)
-  local name, is_optional = make_param_name(parameter, false, element)
-  local joined_types = make_param_types(name, parameter.types, is_optional, false, element)
-  local description = make_param_description(parameter.doc)
+-- ---Make annotable param line
+-- ---@param parameter table
+-- ---@param element element
+-- ---@return string
+-- local function make_param(parameter, element)
+--   local name, is_optional = make_param_name(parameter, false, element)
+--   local joined_types = make_param_types(name, parameter.types, is_optional, false, element)
+--   local description = make_param_description(parameter.doc)
 
-  return '---@param ' .. name .. ' ' .. joined_types .. ' ' .. description
-end
+--   return '---@param ' .. name .. ' ' .. joined_types .. ' ' .. description
+-- end
 
----Make an annotable return line
----@param returnvalue table
----@param element element
----@return string
-local function make_return(returnvalue, element)
-  local name, is_optional = make_param_name(returnvalue, true, element)
-  local types = make_param_types(name, returnvalue.types, is_optional, true, element)
-  local description = make_param_description(returnvalue.doc)
+-- ---Make an annotable return line
+-- ---@param returnvalue table
+-- ---@param element element
+-- ---@return string
+-- local function make_return(returnvalue, element)
+--   local name, is_optional = make_param_name(returnvalue, true, element)
+--   local types = make_param_types(name, returnvalue.types, is_optional, true, element)
+--   local description = make_param_description(returnvalue.doc)
 
-  return '---@return ' .. types .. ' ' .. name .. ' ' .. description
-end
+--   return '---@return ' .. types .. ' ' .. name .. ' ' .. description
+-- end
 
 ---Make annotable func lines
 ---@param element element
----@return string?
+---@return content_line
 local function make_func(element)
-  if utils.is_blacklisted(config.ignored_funcs, element.name) then
-    return
-  end
-
-  local comment = make_comment(element.description) .. '\n'
-
   local generic = config.generics[element.name]
   local generic_occuriences = 0
+  assert(not generic)
 
-  local params = ''
+  local content = { '' }
+  local params = {}
+  local returns = {}
+
+  internal.content_append(content, make_comment(element.brief))
+  --internal.content_append(content, make_comment(element.description))
+
   for _, parameter in ipairs(element.parameters) do
-    local param = make_param(parameter, element)
-    local count = 0
+    local unpacked = internal.param_from_doc(parameter)
+    local param_text = string.format("%s %s", unpacked.name, parameter.doc)
+    local param_code = internal.param_to_string(unpacked)
 
-    if generic then
-      param, count = param:gsub(' ' .. generic .. ' ', ' T ')
-      generic_occuriences = generic_occuriences + count
-    end
-
-    params = params .. param .. '\n'
+    internal.content_append(content, make_comment(param_text))
+    table.insert(params, param_code)
   end
 
-  local returns = ''
   for _, returnvalue in ipairs(element.returnvalues) do
-    local return_ = make_return(returnvalue, element)
-    local count = 0
+    local unpacked = internal.param_from_doc(returnvalue)
+    local return_text = string.format("return %s", returnvalue.doc)
+    local return_code = internal.param_to_string(unpacked, true)
 
-    if generic then
-      return_, count = return_:gsub(' ' .. generic .. ' ', ' T ')
-      generic_occuriences = generic_occuriences + count
-    end
-
-    returns = returns .. return_ .. '\n'
+    internal.content_append(content, make_comment(return_text))
+    table.insert(returns, return_code)
   end
 
-  if generic_occuriences >= 2 then
-    generic = ('---@generic T: ' .. generic .. '\n')
+  local params_combined = table.concat(params, ', ')
+  local returns_combined = table.concat(returns, ', ')
+  local func
+  if returns_combined ~= "" then
+    func = string.format("%s: function(%s): %s", element.name, params_combined, returns_combined)
   else
-    generic = ''
+    func = string.format("%s: function(%s)", element.name, params_combined)
   end
+  internal.content_append(content, func)
 
-  local func_params = {}
-
-  for _, parameter in ipairs(element.parameters) do
-    local name = make_param_name(parameter, false, element)
-    table.insert(func_params, name)
-  end
-
-  local func = 'function ' .. element.name .. '(' .. table.concat(func_params, ', ') .. ') end'
-  local result = comment .. generic .. params .. returns .. func
-
-  return result
+  return content
 end
 
 ---Make an annotable alias
@@ -407,7 +374,7 @@ end
 local function generate_api(group)
 
   local makers = {
-    -- FUNCTION = make_func,
+    FUNCTION = make_func,
     -- VARIABLE = make_const,
     BASIC_CLASS = make_class,
     BASIC_ALIAS = make_alias
@@ -505,7 +472,7 @@ local function patch_module(module)
   -- filter for developing purpose
   local allowed = {
     meta = true,
-    --go = true,
+    go = true,
   }
   if not allowed[module.info.namespace] then
     module.elements = {}
@@ -520,6 +487,11 @@ local function patch_module(module)
   -- remove empty defenitions
   remove_elements(module, function (v)
     return v.fields and v.fields.is_global == true
+  end)
+
+  -- remove blacklisted functions
+  remove_elements(module, function (v)
+    return utils.is_blacklisted(config.ignored_funcs, v.name)
   end)
 
   if module.info.namespace == "meta" then

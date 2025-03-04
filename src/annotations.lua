@@ -21,6 +21,7 @@
 ---@field type string
 ---@field name string
 ---@field description string
+---@field brief? string
 ---@field parameters? parameter[]
 ---@field returnvalues? returnvalue[]
 ---@field alias? string
@@ -30,11 +31,17 @@
 ---@class parameter
 ---@field name string
 ---@field doc string
+---@field types string[]
 
 ---@class element_group
 ---@field name string
 ---@field elements element[]
 ---@field groups table<string, element_group>
+
+---@class teal_param
+---@field name string
+---@field is_optional boolean
+---@field types string
 
 ---@alias content_line string|string[]
 ---@alias content content_line[]
