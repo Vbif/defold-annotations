@@ -26,6 +26,28 @@ local function split_type(type)
   return list
 end
 
+---Convert Lua annotation type to Teal
+---@param type string
+---@return string
+local function convert_type_single(type)
+  local list = {}
+  while true do
+    local last_two = string.sub(type, -2)
+    if last_two == "[]" then
+      table.insert(list, "array")
+      type = string.sub(type, 1, -3)
+    else
+      break
+    end
+  end
+  for index, value in ipairs(list) do
+    if value == "array" then
+      type = string.format("{%s}", type)
+    end
+  end
+  return type
+end
+
 ---Change some strange types
 ---@param types table<string, boolean>
 local function correct_types_wrong(types)
@@ -85,7 +107,8 @@ local function correct_types(types)
 
   types = {}
   for key, _ in pairs(map) do
-    table.insert(types, key)
+    local corrected_teal = convert_type_single(key)
+    table.insert(types, corrected_teal)
   end
   table.sort(types)
 
@@ -149,7 +172,7 @@ function internal.foreach_stable(t, callback)
   end
 end
 
----Transform param name to name and optional sign
+---Make param structure from document representation
 ---@param parameter parameter
 ---@return teal_param
 function internal.param_from_doc(parameter)
@@ -168,6 +191,23 @@ function internal.param_from_doc(parameter)
     name = name,
     is_optional = is_optional,
     types = types
+  }
+end
+
+---Make param structure from string representation
+---@param text string
+---@return teal_param
+function internal.param_from_string(text)
+  text = text or ""
+  text = string.gsub(text, "%s+", "")
+
+  local types = split_type(text)
+  local type_string = correct_types(types)
+
+  return {
+    name = "",
+    is_optional = false,
+    types = type_string
   }
 end
 

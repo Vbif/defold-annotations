@@ -31,41 +31,6 @@ local function decode_text(text)
   return result
 end
 
----Convert Lua annotation type to Teal
----@param type string
----@return string
-local function convert_type_single(type)
-  local list = {}
-  while true do
-    local last_two = string.sub(type, -2)
-    if last_two == "[]" then
-      table.insert(list, "array")
-      type = string.sub(type, 1, -3)
-    else
-      break
-    end
-  end
-  for index, value in ipairs(list) do
-    if value == "array" then
-      type = string.format("{%s}", type)
-    end
-  end
-  return type
-end
-
----Convert Lua annotation type to Teal
----@param type string
----@return string
-local function convert_type(type)
-  type = string.gsub(type, "%s+", "")
-  local types = {}
-  for value in string.gmatch(type, "([^|]+)") do
-    local conv = convert_type_single(value)
-    table.insert(types, conv)
-  end
-  return table.concat(types, "|")
-end
-
 ---Split string with type and comment to separate strings
 ---@param text string
 ---@return string type
@@ -126,137 +91,6 @@ local function make_const(element)
 
   return result
 end
-
--- ---Make an annotatable param name
--- ---@param parameter table
--- ---@param is_return boolean
--- ---@param element element
--- ---@return string name
--- ---@return boolean is_optional
--- local function make_param_name(parameter, is_return, element)
---   local name = parameter.name
---   local is_optional = false
-
---   if name:sub(1, 1) == '[' and name:sub(-1) == ']' then
---     is_optional = true
---     name = name:sub(2, #name - 1)
---   end
-
---   name = config.global_name_replacements[name] or name
-
---   local local_replacements = config.local_name_replacements[element.name] or {}
---   name = local_replacements[(is_return and 'return_' or 'param_') .. name] or name
-
---   if name:sub(-3) == '...' then
---     name = '...'
---   end
-
---   name = name:gsub('-', '_')
-
---   return name, is_optional
--- end
-
--- ---Make annotatable param types
--- ---@param name string
--- ---@param types table
--- ---@param is_optional boolean
--- ---@param is_return boolean
--- ---@param element element
--- ---@return string concated_string
--- local function make_param_types(name, types, is_optional, is_return, element)
---   local local_replacements = config.local_type_replacements[element.name] or {}
-
---   for index = 1, #types do
---     local type = types[index]
---     local is_known = false
-
---     local replacement = config.global_type_replacements[type] or type
---     replacement = local_replacements[(is_return and 'return_' or 'param_') .. type .. '_' .. name] or replacement
-
---     if replacement then
---       type = replacement
---       is_known = true
---     end
-
---     for _, known_type in ipairs(config.known_types) do
---       is_known = is_known or type == known_type
---     end
-
---     local known_classes = utils.sorted_keys(config.known_classes)
---     for _, known_class in ipairs(known_classes) do
---       is_known = is_known or type == known_class
---     end
-
---     local known_aliases = utils.sorted_keys(config.known_aliases)
---     for _, known_alias in ipairs(known_aliases) do
---       is_known = is_known or type == known_alias
---     end
-
---     is_known = is_known or type:sub(1, 9) == 'function('
-
---     if not is_known then
---       types[index] = config.unknown_type
---     else
---       type = type:gsub('function%(%)', 'function')
-
---       if type:sub(1, 9) == 'function(' then
---         type = 'fun' .. type:sub(9)
---       end
-
---       types[index] = type
---     end
---   end
-
---   if is_optional then
---     local is_already_optional = false
-
---     for _, type in ipairs(types) do
---       is_already_optional = is_already_optional or type == 'nil'
---     end
-
---     if not is_already_optional then
---       table.insert(types, 'nil')
---     end
---   end
-
---   local result = table.concat(types, '|')
---   result = #result > 0 and result or config.unknown_type
-
---   return result
--- end
-
--- ---Make an annotable param description
--- ---@param description string
--- ---@return string
--- local function make_param_description(description)
---   local result = decode_text(description)
---   result = result:gsub('\n', '\n---')
---   return result
--- end
-
--- ---Make annotable param line
--- ---@param parameter table
--- ---@param element element
--- ---@return string
--- local function make_param(parameter, element)
---   local name, is_optional = make_param_name(parameter, false, element)
---   local joined_types = make_param_types(name, parameter.types, is_optional, false, element)
---   local description = make_param_description(parameter.doc)
-
---   return '---@param ' .. name .. ' ' .. joined_types .. ' ' .. description
--- end
-
--- ---Make an annotable return line
--- ---@param returnvalue table
--- ---@param element element
--- ---@return string
--- local function make_return(returnvalue, element)
---   local name, is_optional = make_param_name(returnvalue, true, element)
---   local types = make_param_types(name, returnvalue.types, is_optional, true, element)
---   local description = make_param_description(returnvalue.doc)
-
---   return '---@return ' .. types .. ' ' .. name .. ' ' .. description
--- end
 
 ---Make annotable func lines
 ---@param element element
@@ -333,12 +167,12 @@ local function make_class(element)
     internal.foreach_stable(fields, function(field_name, type)
       local comment = ""
       type, comment = split_type_comment(type)
-      type = convert_type(type)
+      local params = internal.param_from_string(type)
       if comment ~= "" then
         content_fields[index] = make_comment(comment, "--")
         index = index + 1
       end
-      content_fields[index] = string.format('%s: %s', field_name, type)
+      content_fields[index] = string.format('%s: %s', field_name, params.types)
       index = index + 1
     end)
   end
@@ -348,12 +182,9 @@ local function make_class(element)
 
   if operators then
     internal.foreach_stable(operators, function(operator_name, operator)
-      local params = {}
-      if operator.param then
-        table.insert(params, operator.param)
-      end
-      local func_params = table.concat(params, ", ")
-      content_operators[index] = string.format("%s: function(%s): %s", operator_name, func_params, operator.result)
+      local params = internal.param_from_string(operator.param)
+      local returns = internal.param_from_string(operator.result)
+      content_operators[index] = string.format("%s: function(%s): %s", operator_name, params.types, returns.types)
       index = index + 1
     end)
   end
