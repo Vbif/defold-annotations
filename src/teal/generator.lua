@@ -80,6 +80,29 @@ local function make_global_header(defold_version)
   return result
 end
 
+---Make an module with internal stuff
+---@return string[]
+local function make_internal()
+  local content = {
+    'global record hashed is userdata end',
+    '',
+    '---hashes a string',
+    '---s string to hash',
+    '---return a hashed string',
+    'global function hash(s: string): hashed end',
+    '',
+    '---get hex representation of a hash value as a string',
+    '---h hash value to get hex string for',
+    '---return hex representation of the hash',
+    'global function hash_to_hex(h: hashed): string end',
+    '',
+    '---pretty printing',
+    '---v value to print',
+    'global function pprint(...) end',
+  }
+  return content
+end
+
 ---Make an annotatable constant
 ---@param element element
 ---@return string
@@ -310,6 +333,15 @@ local function patch_module(module)
     return
   end
 
+  -- filter out unnessesary
+  local skip = {
+    builtins = true,
+  }
+  if skip[module.info.namespace] then
+    module.elements = {}
+    return
+  end
+
   -- skip all editor stuff for now
   remove_elements(module, function (v)
     return string.sub(v.name, 1, 6) == 'editor'
@@ -333,6 +365,7 @@ local function patch_module(module)
       float = true,
       render_target = true,
       resource_handle = true,
+      hash = true,
     }
     remove_elements(module, function (v)
       return toremove[v.name]
@@ -382,6 +415,7 @@ function generator.generate_api(modules, defold_version)
   -- generate recursivly, add global, flattern
   local content = {
     make_global_header(defold_version),
+    make_internal(),
     globalize(generate_api(root_group)),
   }
   local strings = internal.content_stringify(content)

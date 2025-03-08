@@ -68,6 +68,7 @@ local function correct_types_wrong(types)
   local changes = {
     ["function(self, url, property)"] = "function(self, url, hash)",
     ["bool"] = "boolean",
+    ["hash"] = "hashed",
   }
   dojob(changes)
 end
