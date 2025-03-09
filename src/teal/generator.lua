@@ -125,14 +125,14 @@ end
 
 ---Make an annotatable constant
 ---@param element element
----@return string
+---@return string[]
 local function make_const(element)
-  local result = ''
+  local content = {
+    make_comment(element.description),
+    string.format("%s: constant", element.name)
+  }
 
-  result = result .. make_comment(element.description) .. '\n'
-  result = result .. element.name .. ' = nil'
-
-  return result
+  return content
 end
 
 ---Make annotable func lines
@@ -251,7 +251,7 @@ local function generate_api(group)
 
   local makers = {
     FUNCTION = make_func,
-    -- VARIABLE = make_const,
+    VARIABLE = make_const,
     BASIC_CLASS = make_class,
     BASIC_ALIAS = make_alias
   }
