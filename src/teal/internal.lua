@@ -66,32 +66,11 @@ local function correct_types_wrong(types)
   dojob(config.global_type_replacements)
 
   local changes = {
-    ["function(self, url, property)"] = "function(self, url, hash)",
+    ["function(self, url, property)"] = "function(self, url, hashed)",
     ["bool"] = "boolean",
     ["hash"] = "hashed",
   }
   dojob(changes)
-end
-
----Fuse every userdata for now
----@param types table<string, boolean>
-local function correct_types_userdata(types)
-  local userdata_types = {
-    "vector3", "vector4", "quaternion", "hash", "url", "constant"
-  }
-  local userdata_count = 0
-  for _, value in ipairs(userdata_types) do
-    if types[value] then
-      userdata_count = userdata_count + 1
-    end
-  end
-
-  if userdata_count > 1 then
-    for _, value in ipairs(userdata_types) do
-      types[value] = nil
-    end
-    types["any"] = true
-  end
 end
 
 ---Apply variaty of rules to transform lua to teal types\
@@ -104,7 +83,6 @@ local function correct_types(types)
   end
 
   correct_types_wrong(map)
-  correct_types_userdata(map)
 
   types = {}
   for key, _ in pairs(map) do

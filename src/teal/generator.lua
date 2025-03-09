@@ -80,25 +80,45 @@ local function make_global_header(defold_version)
   return result
 end
 
+---Define defold unique userdata class
+---@param name string
+---@return string
+local function make_defold_type_definition(name)
+  local content = ""
+  content = content .. string.format('record %s is defold_type, userdata', name)
+  content = content .. string.format('\n\twhere self.type == "%s"', name)
+  return content
+end
+
 ---Make an module with internal stuff
 ---@return string[]
 local function make_internal()
   local content = {
-    'global record hashed is userdata end',
+    'global interface defold_type',
+    '\ttype: string',
+    'end',
+    '',
+    make_defold_type_definition('hashed'),
+    'end',
+    '',
+    make_defold_type_definition('constant'),
+    'end',
     '',
     '---hashes a string',
     '---s string to hash',
     '---return a hashed string',
-    'global function hash(s: string): hashed end',
+    'global function hash(_: string): hashed end',
     '',
     '---get hex representation of a hash value as a string',
     '---h hash value to get hex string for',
     '---return hex representation of the hash',
-    'global function hash_to_hex(h: hashed): string end',
+    'global function hash_to_hex(_: hashed): string end',
     '',
     '---pretty printing',
     '---v value to print',
-    'global function pprint(...) end',
+    'global function pprint(...: any)',
+    '\tprint(...)',
+    'end',
   }
   return content
 end
@@ -167,7 +187,7 @@ end
 local function make_alias(element)
   local content
   if element.alias == "userdata" then
-    content = string.format("global record %s is userdata end", element.name)
+    content = make_defold_type_definition(element.name) .. 'end'
   else
     content = string.format("global type %s = %s", element.name, element.alias)
   end
@@ -214,7 +234,9 @@ local function make_class(element)
 
   local content = {
     '',
-    string.format('record %s is userdata', name),
+    string.format('record %s is defold_type, userdata', name),
+    string.format('\twhere self.type == "%s"', name),
+    '',
     content_fields,
     content_operators,
     'end',
@@ -366,6 +388,7 @@ local function patch_module(module)
       render_target = true,
       resource_handle = true,
       hash = true,
+      constant = true,
     }
     remove_elements(module, function (v)
       return toremove[v.name]
@@ -415,7 +438,7 @@ function generator.generate_api(modules, defold_version)
   -- generate recursivly, add global, flattern
   local content = {
     make_global_header(defold_version),
-    make_internal(),
+    globalize(make_internal()),
     globalize(generate_api(root_group)),
   }
   local strings = internal.content_stringify(content)
